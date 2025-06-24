@@ -1,0 +1,784 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Planeta do Senhor Kaioh</title>
+    <style>
+        body { 
+            margin: 0; 
+            overflow: hidden; 
+            background-color: #000;
+            font-family: Arial, sans-serif;
+            cursor: grab;
+        }
+        body.grabbing {
+            cursor: grabbing;
+        }
+        canvas { 
+            display: block; 
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+        #background {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            background-image: url('https://images.unsplash.com/photo-1561484930-974554019ade?ixlib=rb-1.2.1&auto=format&fit=crop&w=1350&q=80');
+            background-size: cover;
+            opacity: 0.7;
+            z-index: -1;
+        }
+        #controls {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            color: white;
+            background-color: rgba(0,0,0,0.7);
+            padding: 15px;
+            border-radius: 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            max-width: 300px;
+            z-index: 10;
+        }
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+        .control-group h3 {
+            margin: 0 0 5px 0;
+            color: #4CAF50;
+        }
+        .button-row {
+            display: flex;
+            gap: 5px;
+        }
+        button {
+            padding: 8px 12px;
+            cursor: pointer;
+            flex: 1;
+            min-width: 60px;
+            background-color: #4CAF50;
+            border: none;
+            color: white;
+            border-radius: 5px;
+            font-weight: bold;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        button:active {
+            transform: scale(0.95);
+        }
+        #instructions {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            color: white;
+            background-color: rgba(0,0,0,0.7);
+            padding: 10px;
+            border-radius: 5px;
+            max-width: 300px;
+            z-index: 10;
+        }
+    </style>
+</head>
+<body>
+    <div id="background"></div>
+    <div id="controls">
+        <div class="control-group">
+            <h3>Controle do Planeta</h3>
+            <div class="button-row">
+                <button id="planet-left">Esquerda</button>
+                <button id="planet-right">Direita</button>
+            </div>
+            <div class="button-row">
+                <button id="planet-up">Cima</button>
+                <button id="planet-down">Baixo</button>
+            </div>
+            <div class="button-row">
+                <button id="planet-rotate">Girar</button>
+                <button id="planet-stop">Parar</button>
+            </div>
+        </div>
+        
+        <div class="control-group">
+            <h3>Controle do Carro</h3>
+            <div class="button-row">
+                <button id="car-faster">Acelerar</button>
+                <button id="car-slower">Desacelerar</button>
+            </div>
+            <div class="button-row">
+                <button id="car-forward">Frente</button>
+                <button id="car-backward">Ré</button>
+            </div>
+            <div class="button-row">
+                <button id="car-stop">Parar</button>
+            </div>
+        </div>
+        
+        <div class="button-row">
+            <button id="reset">Resetar Tudo</button>
+        </div>
+    </div>
+    
+    <div id="instructions">
+        <p>Controles:</p>
+        <p>- Arraste com mouse para rotacionar</p>
+        <p>- Scroll para zoom in/out</p>
+        <p>- Use os botões para controle preciso</p>
+    </div>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        // Cena principal
+        const scene = new THREE.Scene();
+        
+        // Câmera com perspectiva
+        const camera = new THREE.PerspectiveCamera(
+            60, 
+            window.innerWidth / window.innerHeight, 
+            0.1, 
+            1000
+        );
+        camera.position.set(0, 0, 30);
+        
+        // Renderizador
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+        
+        // Grupo para todo o planeta e seus elementos
+        const planetGroup = new THREE.Group();
+        scene.add(planetGroup);
+        
+        // Planeta principal (verde brilhante como no anime)
+        const planetGeometry = new THREE.SphereGeometry(8, 64, 64);
+        const planetMaterial = new THREE.MeshStandardMaterial({
+            color: 0x00FF00,
+            roughness: 0.5,
+            metalness: 0.3,
+            emissive: 0x00AA00,
+            emissiveIntensity: 0.2
+        });
+        const planet = new THREE.Mesh(planetGeometry, planetMaterial);
+        planetGroup.add(planet);
+        
+        // Lua
+        const moonGeometry = new THREE.SphereGeometry(2, 32, 32);
+        const moonMaterial = new THREE.MeshStandardMaterial({
+            color: 0xDDDDDD,
+            roughness: 0.8,
+            metalness: 0.1
+        });
+        const moon = new THREE.Mesh(moonGeometry, moonMaterial);
+        moon.position.set(20, 10, -15);
+        scene.add(moon);
+
+        // Função para posicionar objetos na superfície corretamente
+        function placeOnSurface(object, lat, lon, elevation = 0) {
+            const radius = 8 + elevation;
+            const phi = (90 - lat) * (Math.PI / 180);
+            const theta = (lon + 180) * (Math.PI / 180);
+            
+            object.position.x = -radius * Math.sin(phi) * Math.cos(theta);
+            object.position.y = radius * Math.cos(phi);
+            object.position.z = radius * Math.sin(phi) * Math.sin(theta);
+            
+            // Cria um vetor que aponta do centro do planeta para o objeto
+            const normal = new THREE.Vector3(
+                object.position.x,
+                object.position.y,
+                object.position.z
+            ).normalize();
+            
+            // Faz o objeto olhar para a direção oposta ao centro (para ficar "em pé")
+            object.quaternion.setFromUnitVectors(
+                new THREE.Vector3(0, 1, 0),
+                normal
+            );
+            
+            planetGroup.add(object);
+            return object;
+        }
+        
+        // Cria uma estrada reta no equador do planeta
+        function createStraightRoad() {
+            const roadGroup = new THREE.Group();
+            const segments = 100;
+            const width = 0.8;
+            const height = 0.1;
+            
+            for (let i = 0; i < segments; i++) {
+                const lon = (i / segments) * 360;
+                
+                const segmentGeometry = new THREE.PlaneGeometry(width, height);
+                const segmentMaterial = new THREE.MeshStandardMaterial({
+                    color: 0x333333,
+                    side: THREE.DoubleSide,
+                    metalness: 0.2,
+                    roughness: 0.7
+                });
+                const segment = new THREE.Mesh(segmentGeometry, segmentMaterial);
+                
+                // Posiciona no equador (latitude 0)
+                const radius = 8.05;
+                const phi = (90 - 0) * (Math.PI / 180);
+                const theta = (lon + 180) * (Math.PI / 180);
+                
+                segment.position.x = -radius * Math.sin(phi) * Math.cos(theta);
+                segment.position.y = radius * Math.cos(phi);
+                segment.position.z = radius * Math.sin(phi) * Math.sin(theta);
+                
+                // Orientação perfeita para a superfície
+                const normal = new THREE.Vector3(
+                    segment.position.x,
+                    segment.position.y,
+                    segment.position.z
+                ).normalize();
+                
+                segment.quaternion.setFromUnitVectors(
+                    new THREE.Vector3(0, 1, 0),
+                    normal
+                );
+                
+                // Rotação adicional para alinhar a estrada reta
+                segment.rotateX(Math.PI/2);
+                segment.rotateZ(Math.PI/2);
+                
+                // Adiciona marcações na estrada
+                if (i % 10 === 0) {
+                    const markGeometry = new THREE.PlaneGeometry(width * 0.6, height * 0.5);
+                    const markMaterial = new THREE.MeshStandardMaterial({
+                        color: 0xFFFF00,
+                        side: THREE.DoubleSide
+                    });
+                    const mark = new THREE.Mesh(markGeometry, markMaterial);
+                    
+                    mark.position.copy(segment.position);
+                    mark.quaternion.copy(segment.quaternion);
+                    mark.rotateX(Math.PI/2);
+                    mark.rotateZ(Math.PI/2);
+                    mark.translateY(0.01);
+                    
+                    roadGroup.add(mark);
+                }
+                
+                roadGroup.add(segment);
+            }
+            
+            return roadGroup;
+        }
+        
+        // Cria um carro vermelho detalhado
+        function createDetailedCar() {
+            const carGroup = new THREE.Group();
+            
+            // Corpo principal do carro
+            const bodyGeometry = new THREE.BoxGeometry(0.6, 0.3, 1.2);
+            const bodyMaterial = new THREE.MeshStandardMaterial({ 
+                color: 0xFF0000,
+                metalness: 0.3,
+                roughness: 0.5
+            });
+            const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+            
+            // Parte superior do carro
+            const topGeometry = new THREE.BoxGeometry(0.5, 0.25, 0.8);
+            const top = new THREE.Mesh(topGeometry, bodyMaterial);
+            top.position.y = 0.25;
+            
+            // Para-brisa
+            const windshieldGeometry = new THREE.BoxGeometry(0.48, 0.1, 0.3);
+            const windshieldMaterial = new THREE.MeshStandardMaterial({ 
+                color: 0x88CCFF,
+                transparent: true,
+                opacity: 0.7
+            });
+            const windshield = new THREE.Mesh(windshieldGeometry, windshieldMaterial);
+            windshield.position.set(0, 0.4, 0.2);
+            
+            // Rodas
+            const wheelGeometry = new THREE.CylinderGeometry(0.12, 0.12, 0.2, 24);
+            const wheelMaterial = new THREE.MeshStandardMaterial({ 
+                color: 0x222222,
+                metalness: 0.8,
+                roughness: 0.3
+            });
+            const wheelTireGeometry = new THREE.TorusGeometry(0.12, 0.05, 8, 24);
+            const wheelTireMaterial = new THREE.MeshStandardMaterial({ 
+                color: 0x333333,
+                metalness: 0.1,
+                roughness: 0.9
+            });
+            
+            // Posições das rodas: [x, y, z]
+            const wheelPositions = [
+                [-0.3, -0.2, -0.5],
+                [0.3, -0.2, -0.5],
+                [-0.3, -0.2, 0.5],
+                [0.3, -0.2, 0.5]
+            ];
+            
+            wheelPositions.forEach(pos => {
+                const wheel = new THREE.Mesh(wheelGeometry, wheelMaterial);
+                wheel.position.set(pos[0], pos[1], pos[2]);
+                wheel.rotation.z = Math.PI / 2;
+                
+                const tire = new THREE.Mesh(wheelTireGeometry, wheelTireMaterial);
+                tire.position.set(pos[0], pos[1], pos[2]);
+                tire.rotation.z = Math.PI / 2;
+                
+                carGroup.add(wheel);
+                carGroup.add(tire);
+            });
+            
+            // Faróis
+            const lightGeometry = new THREE.SphereGeometry(0.08, 16, 16);
+            const lightMaterial = new THREE.MeshStandardMaterial({ 
+                color: 0xFFFFAA,
+                emissive: 0xFFFF00,
+                emissiveIntensity: 0.5
+            });
+            const leftLight = new THREE.Mesh(lightGeometry, lightMaterial);
+            const rightLight = new THREE.Mesh(lightGeometry, lightMaterial);
+            
+            leftLight.position.set(-0.25, 0.1, -0.6);
+            rightLight.position.set(0.25, 0.1, -0.6);
+            
+            // Lanternas traseiras
+            const tailLightGeometry = new THREE.SphereGeometry(0.08, 16, 16);
+            const tailLightMaterial = new THREE.MeshStandardMaterial({ 
+                color: 0xFF8888,
+                emissive: 0xFF0000,
+                emissiveIntensity: 0.3
+            });
+            const leftTailLight = new THREE.Mesh(tailLightGeometry, tailLightMaterial);
+            const rightTailLight = new THREE.Mesh(tailLightGeometry, tailLightMaterial);
+            
+            leftTailLight.position.set(-0.25, 0.1, 0.6);
+            rightTailLight.position.set(0.25, 0.1, 0.6);
+            
+            carGroup.add(body);
+            carGroup.add(top);
+            carGroup.add(windshield);
+            carGroup.add(leftLight);
+            carGroup.add(rightLight);
+            carGroup.add(leftTailLight);
+            carGroup.add(rightTailLight);
+            
+            return carGroup;
+        }
+        
+        // Cria a casa do Senhor Kaioh
+        function createKaiohHouse() {
+            const houseGroup = new THREE.Group();
+            
+            // Base cilíndrica
+            const baseGeometry = new THREE.CylinderGeometry(0.5, 0.5, 0.3, 6);
+            const baseMaterial = new THREE.MeshStandardMaterial({ color: 0xFFFFFF });
+            const base = new THREE.Mesh(baseGeometry, baseMaterial);
+            houseGroup.add(base);
+            
+            // Telhado cônico
+            const roofGeometry = new THREE.ConeGeometry(0.6, 0.5, 6);
+            const roofMaterial = new THREE.MeshStandardMaterial({ color: 0xFF0000 });
+            const roof = new THREE.Mesh(roofGeometry, roofMaterial);
+            roof.position.y = 0.4;
+            houseGroup.add(roof);
+            
+            // Bola no topo
+            const topGeometry = new THREE.SphereGeometry(0.1, 16, 16);
+            const topMaterial = new THREE.MeshStandardMaterial({ 
+                color: 0xFFFF00,
+                emissive: 0xFFAA00,
+                emissiveIntensity: 0.3
+            });
+            const top = new THREE.Mesh(topGeometry, topMaterial);
+            top.position.y = 0.8;
+            houseGroup.add(top);
+            
+            return houseGroup;
+        }
+        
+        // Cria Bubbles (as bolinhas características)
+        function createBubble(color = 0xFFFFFF, size = 0.2) {
+            const bubbleGeometry = new THREE.SphereGeometry(size, 16, 16);
+            const bubbleMaterial = new THREE.MeshStandardMaterial({
+                color: color,
+                transparent: true,
+                opacity: 0.8,
+                metalness: 0.3,
+                roughness: 0.1
+            });
+            return new THREE.Mesh(bubbleGeometry, bubbleMaterial);
+        }
+        
+        // Cria árvores corretamente orientadas
+        function createTree() {
+            const treeGroup = new THREE.Group();
+            
+            // Tronco
+            const trunkGeometry = new THREE.CylinderGeometry(0.05, 0.05, 0.3, 8);
+            const trunkMaterial = new THREE.MeshStandardMaterial({ color: 0x8B4513 });
+            const trunk = new THREE.Mesh(trunkGeometry, trunkMaterial);
+            trunk.position.y = 0.15;
+            treeGroup.add(trunk);
+            
+            // Folhagem (esférica como no anime)
+            const leavesGeometry = new THREE.SphereGeometry(0.2, 8, 8);
+            const leavesMaterial = new THREE.MeshStandardMaterial({ color: 0x00AA00 });
+            const leaves = new THREE.Mesh(leavesGeometry, leavesMaterial);
+            leaves.position.y = 0.3;
+            treeGroup.add(leaves);
+            
+            // Centraliza o grupo da árvore
+            treeGroup.position.y = -0.15;
+            
+            return treeGroup;
+        }
+        
+        // Verifica se uma posição está muito próxima da estrada
+        function isNearRoad(lat, lon) {
+            // A estrada está no equador (latitude 0)
+            // Consideramos "próximo" como latitude entre -5 e 5 graus
+            return Math.abs(lat) < 5;
+        }
+        
+        // Adiciona elementos ao planeta
+        function populatePlanet() {
+            // Estrada reta no equador
+            const road = createStraightRoad();
+            planetGroup.add(road);
+            
+            // Casa do Senhor Kaioh
+            const kaiohHouse = createKaiohHouse();
+            placeOnSurface(kaiohHouse, 30, 0, 0.5);
+            
+            // Bubbles (bolinhas características)
+            for (let i = 0; i < 15; i++) {
+                const bubble = createBubble(
+                    [0xFF0000, 0x00FF00, 0x0000FF, 0xFFFF00][Math.floor(Math.random() * 4)],
+                    0.1 + Math.random() * 0.2
+                );
+                let lat, lon;
+                
+                // Garante que as bolhas não fiquem na estrada
+                do {
+                    lat = Math.random() * 60 - 30;
+                    lon = Math.random() * 360 - 180;
+                } while (isNearRoad(lat, lon));
+                
+                placeOnSurface(bubble, lat, lon, 0.2 + Math.random() * 0.3);
+            }
+            
+            // Árvores corretamente orientadas
+            for (let i = 0; i < 10; i++) {
+                const tree = createTree();
+                let lat, lon;
+                
+                // Garante que as árvores não fiquem na estrada
+                do {
+                    lat = Math.random() * 60 - 30;
+                    lon = Math.random() * 360 - 180;
+                } while (isNearRoad(lat, lon));
+                
+                placeOnSurface(tree, lat, lon, 0.3);
+            }
+        }
+        
+        // Chama a função para popular o planeta
+        populatePlanet();
+        
+        // Cria e posiciona o carro vermelho na estrada
+        const redCar = createDetailedCar();
+        let carLongitude = 0;
+        let targetSpeed = 0;
+        let currentSpeed = 0;
+        let isCarMoving = false;
+        const maxForwardSpeed = 0.5;
+        const maxReverseSpeed = -0.3;
+        const acceleration = 0.005;
+        const deceleration = 0.01;
+
+        // Atualiza a posição e orientação do carro na superfície do planeta
+        function updateCarPosition() {
+            const radius = 8.2;
+            const phi = (90 - 0) * (Math.PI / 180); // latitude 0 (equador)
+            
+            // Atualiza a velocidade atual gradualmente
+            if (isCarMoving) {
+                if (currentSpeed < targetSpeed) {
+                    currentSpeed = Math.min(currentSpeed + acceleration, targetSpeed);
+                } else if (currentSpeed > targetSpeed) {
+                    currentSpeed = Math.max(currentSpeed - acceleration, targetSpeed);
+                }
+            } else {
+                // Desacelera gradualmente quando não está movendo
+                if (currentSpeed > 0) {
+                    currentSpeed = Math.max(0, currentSpeed - deceleration);
+                } else if (currentSpeed < 0) {
+                    currentSpeed = Math.min(0, currentSpeed + deceleration);
+                }
+            }
+            
+            // Atualiza a posição do carro
+            carLongitude += currentSpeed;
+            
+            // Normaliza o ângulo entre 0 e 360
+            if (carLongitude > 360) carLongitude -= 360;
+            if (carLongitude < 0) carLongitude += 360;
+            
+            const theta = (carLongitude + 180) * (Math.PI / 180);
+            
+            // 1. Posicionamento do carro
+            redCar.position.x = -radius * Math.sin(phi) * Math.cos(theta);
+            redCar.position.y = radius * Math.cos(phi);
+            redCar.position.z = radius * Math.sin(phi) * Math.sin(theta);
+            
+            // 2. Vetor normal (sempre perpendicular à superfície)
+            const normal = new THREE.Vector3(
+                redCar.position.x,
+                redCar.position.y,
+                redCar.position.z
+            ).normalize();
+            
+            // 3. Vetor tangente (direção do movimento)
+            const tangentDirection = currentSpeed >= 0 ? 1 : -1;
+            const tangent = new THREE.Vector3(
+                radius * Math.sin(phi) * Math.sin(theta) * tangentDirection,
+                0,
+                -radius * Math.sin(phi) * Math.cos(theta) * tangentDirection
+            ).normalize();
+            
+            // 4. Cria um quaternion que alinha o carro com a tangente
+            const tangentQuat = new THREE.Quaternion();
+            tangentQuat.setFromUnitVectors(
+                new THREE.Vector3(0, 0, 1),
+                tangent
+            );
+            
+            // 5. Aplica a rotação para manter o carro "em pé"
+            const upQuat = new THREE.Quaternion();
+            upQuat.setFromUnitVectors(
+                new THREE.Vector3(0, 1, 0),
+                normal
+            );
+            
+            // 6. Combina as rotações
+            redCar.quaternion.multiplyQuaternions(upQuat, tangentQuat);
+            
+            // 7. Rotação das rodas proporcional à velocidade
+            const wheelRotationSpeed = currentSpeed * 10;
+            redCar.children.forEach(child => {
+                if (child.geometry?.type === "CylinderGeometry") {
+                    child.rotation.x += wheelRotationSpeed;
+                }
+            });
+        }
+
+        // Posiciona o carro inicialmente
+        updateCarPosition();
+        planetGroup.add(redCar);
+        
+        // Atmosfera mais pronunciada
+        const atmosphereGeometry = new THREE.SphereGeometry(8.2, 64, 64);
+        const atmosphereMaterial = new THREE.MeshStandardMaterial({
+            color: 0x88ccff,
+            transparent: true,
+            opacity: 0.3,
+            side: THREE.BackSide
+        });
+        const atmosphere = new THREE.Mesh(atmosphereGeometry, atmosphereMaterial);
+        planetGroup.add(atmosphere);
+        
+        // Iluminação mais forte para parecer o céu do planeta do Kaioh
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 1.5);
+        directionalLight.position.set(5, 3, 5);
+        scene.add(directionalLight);
+        
+        const ambientLight = new THREE.AmbientLight(0x404040, 0.8);
+        scene.add(ambientLight);
+        
+        // Adiciona um ponto de luz para dar brilho ao planeta
+        const planetLight = new THREE.PointLight(0x00FF00, 0.5, 50);
+        planetLight.position.set(0, 0, 0);
+        planetGroup.add(planetLight);
+        
+        // Controles dos botões
+        document.getElementById('planet-left').addEventListener('click', () => {
+            planetRotationY += 0.02;
+            planetAutoRotate = false;
+        });
+        
+        document.getElementById('planet-right').addEventListener('click', () => {
+            planetRotationY -= 0.02;
+            planetAutoRotate = false;
+        });
+        
+        document.getElementById('planet-up').addEventListener('click', () => {
+            planetRotationX += 0.02;
+            planetAutoRotate = false;
+        });
+        
+        document.getElementById('planet-down').addEventListener('click', () => {
+            planetRotationX -= 0.02;
+            planetAutoRotate = false;
+        });
+        
+        document.getElementById('planet-rotate').addEventListener('click', () => {
+            planetAutoRotate = true;
+        });
+        
+        document.getElementById('planet-stop').addEventListener('click', () => {
+            planetAutoRotate = false;
+            planetRotationX = 0;
+            planetRotationY = 0;
+        });
+        
+        document.getElementById('car-faster').addEventListener('click', () => {
+            if (targetSpeed >= 0) {
+                targetSpeed = Math.min(targetSpeed + 0.1, maxForwardSpeed);
+            } else {
+                targetSpeed = Math.min(targetSpeed + 0.1, 0);
+            }
+            isCarMoving = true;
+        });
+        
+        document.getElementById('car-slower').addEventListener('click', () => {
+            if (targetSpeed <= 0) {
+                targetSpeed = Math.max(targetSpeed - 0.1, maxReverseSpeed);
+            } else {
+                targetSpeed = Math.max(targetSpeed - 0.1, 0);
+            }
+            isCarMoving = true;
+        });
+        
+        document.getElementById('car-forward').addEventListener('click', () => {
+            targetSpeed = maxForwardSpeed;
+            isCarMoving = true;
+        });
+        
+        document.getElementById('car-backward').addEventListener('click', () => {
+            targetSpeed = maxReverseSpeed;
+            isCarMoving = true;
+        });
+        
+        document.getElementById('car-stop').addEventListener('click', () => {
+            targetSpeed = 0;
+            isCarMoving = false;
+        });
+        
+        document.getElementById('reset').addEventListener('click', () => {
+            camera.position.z = 30;
+            planetGroup.rotation.set(0, 0, 0);
+            planetAutoRotate = true;
+            planetRotationSpeed = 0.001;
+            carLongitude = 0;
+            targetSpeed = 0;
+            currentSpeed = 0;
+            isCarMoving = false;
+            updateCarPosition();
+        });
+        
+        // Variáveis para controle do mouse
+        let isDragging = false;
+        let previousMousePosition = {
+            x: 0,
+            y: 0
+        };
+        
+        // Controles de mouse
+        document.addEventListener('mousedown', (e) => {
+            isDragging = true;
+            document.body.classList.add('grabbing');
+            previousMousePosition = {
+                x: e.clientX,
+                y: e.clientY
+            };
+        });
+        
+        document.addEventListener('mousemove', (e) => {
+            if (isDragging) {
+                const deltaMove = {
+                    x: e.clientX - previousMousePosition.x,
+                    y: e.clientY - previousMousePosition.y
+                };
+                
+                // Rotação do planeta baseada no movimento do mouse
+                planetGroup.rotation.y += deltaMove.x * 0.01;
+                planetGroup.rotation.x += deltaMove.y * 0.01;
+                planetAutoRotate = false;
+                
+                previousMousePosition = {
+                    x: e.clientX,
+                    y: e.clientY
+                };
+            }
+        });
+        
+        document.addEventListener('mouseup', () => {
+            isDragging = false;
+            document.body.classList.remove('grabbing');
+        });
+        
+        document.addEventListener('mouseleave', () => {
+            isDragging = false;
+            document.body.classList.remove('grabbing');
+        });
+        
+        // Controle de zoom com scroll do mouse
+        document.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            camera.position.z = THREE.MathUtils.clamp(
+                camera.position.z + (e.deltaY * 0.1),
+                15,
+                50
+            );
+        });
+        
+        // Redimensionamento
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.getElementById('background').style.width = window.innerWidth + 'px';
+            document.getElementById('background').style.height = window.innerHeight + 'px';
+        });
+        
+        // Variáveis para controle do planeta
+        let planetRotationSpeed = 0.001;
+        let planetAutoRotate = true;
+        let planetRotationX = 0;
+        let planetRotationY = 0;
+        
+        // Animação
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            // Rotação do planeta
+            if (planetAutoRotate) {
+                planetGroup.rotation.y += planetRotationSpeed;
+            } else {
+                planetGroup.rotation.x += planetRotationX;
+                planetGroup.rotation.y += planetRotationY;
+            }
+            
+            // Rotação da lua
+            moon.position.x = 20 * Math.cos(Date.now() * 0.0005);
+            moon.position.z = -15 * Math.sin(Date.now() * 0.0005);
+            
+            // Movimento do carro na estrada
+            updateCarPosition();
+            
+            renderer.render(scene, camera);
+        }
+        
+        animate();
+    </script>
+</body>
+</html>
